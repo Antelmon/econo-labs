@@ -1,0 +1,437 @@
+####################################################################################
+####################################################################################
+#####                                                                          #####
+#####            LAB SESSION 3: Simulating hypotheses violation                #####
+#####                                                                          #####
+#####            The objective of this lab class is to compare linear          #####
+#####            regression and statistical inference results when some        ##### 
+#####            of the OLS hypotheses are violated.                           #####
+#####                                                                          #####
+#####            Gaëlle Le Fol                                2023-2024        #####
+#####                                                                          #####
+####################################################################################
+####################################################################################
+
+
+
+
+
+#####                    EXERCISE 1: The no-problem model                      #####
+
+# 1. Constructing the variables
+# (a) Declare a working directory.  Choose a set of parameters ensuring that the model 
+# meets the OLS hypotheses. Choose a random sequence by imposing a seed of 203.
+set workdir "/Users/.../M203/Econometrics/LAB/LAB2023-2024/LAB3"
+clear
+# Setting the parameters
+scalar T=500
+nulldata T
+scalar T=nobs(index)
+set seed 203
+# setting the mus
+scalar mu1 = 10
+scalar mu2 = 2
+scalar mu3 = -5
+# setting the variance - covariance parameters
+scalar gam1=0  # for no-problem model
+scalar sigx1=5
+scalar sigx2=2
+scalar sigx3=1
+scalar sigu=1
+matrix Sigma= {sigx1^2,gam1,0,0 ; gam1,sigx2^2,0,0;0,0,sigx3^2,0;0,0,0,sigu^2}
+
+# (b) Generate Z standard pseudo-random variate
+matrix Z = mnormal(T,4)
+
+# (c) Constructing X
+matrix L = cholesky(Sigma)
+matrix M = L'
+matrix X = Z*M
+matrix mu = {mu1, mu2, mu3, 0} # line-vector of the 4 means
+matrix X =ones(T)*mu+ X
+
+# (d) Construct the series
+series x1 = X[,1]
+series x2 = X[,2]
+series x3 = X[,3]
+series u1 = X[,4]
+store "DataLAB3_2023.gdt" x1 x2 x3 u1 
+
+open "DataLAB3_2023.gdt"
+
+# (e) Compute some descriptive statistics of the variables
+outfile "stat_a.txt" --quiet
+    print "#################################################################"
+    print "###               LAB3 -       No problem model               ###"
+    print "#################################################################"
+    print ""
+    print "###               Descriptive statistics                      ###"
+    print ""
+    summary --simple   
+end outfile
+
+# (f) compute the correlations
+outfile "stat_a.txt" --quiet --append
+    print ""
+    print "###               Correlations                                ###"
+    print ""
+    corr x1 x2
+    corr x1 x3
+    corr x1 u1
+    corr x2 x3
+    corr x2 u1        
+    corr x3 u1     
+end outfile
+
+# (g) Loop to do (e)
+list myvariables = x1 x2 x3 u1
+outfile stat_b.txt --quiet
+    loop foreach i myvariables
+        summary myvariables.$i --simple
+        corr myvariables.$i u1
+    endloop
+    corr myvariables
+end outfile
+
+# (h) Plot the evolution of the X's variables
+gnuplot x1 x2 x3 --time-series --with-lines --output=display
+scatters  x1 x2 x3  --time-series --with-lines --output=display
+
+
+
+# 2. Generating and estimating the no problem model
+# (a) generate y1 such that beta0=beta1=beta2=1 and beta3=0
+series y1 = 1 + x1 +x2 + u1
+
+# (b) Save x1 x2 x3 and y1
+store "DataLAB3_2023.gdt" y1 x1 x2 x3 u1
+
+# (c) Do a scatter plot of y1 against the xs
+scatters x1 x2 x3; y1 --output=display
+
+# (d) OLS and save R2, AIC, BIC
+"Model No-Problem" <- ols y1 const x1 x2 x3
+scalar R2noPB = $rsq
+scalar AICnoPB = $aic
+scalar BICnoPB = $bic
+
+outfile stat_crit_and_tests --quiet 
+    print "********************************************************************************************************"
+    print "******                                  THE NO-PROBLEM MODEL                                      ******"
+    
+    printf "\n R2 = %.4f, AIC = %.2f, BIC = = %5.2f \n",R2noPB, AICnoPB, BICnoPB
+end outfile
+
+open "DataLAB3_2023.gdt"
+setobs 1 1 --time-series
+ols y1 const x1 x2 x3
+
+
+# 3. Test the parameters and save the pvalues
+# (a) Not equivalent
+# (b) H0:{beta0 =beta1=beta2=1}
+scalar ESSnc=$ess
+scalar dfnc=$df
+series y1bis=y1-1-x1-x2
+ols y1bis x3
+scalar ESSc=$ess
+scalar dfc=$df
+
+scalar Fstat = ((ESSc - ESSnc)/(dfc-dfnc))/(ESSnc/dfnc)
+scalar pval1 = pvalue(F,dfc-dfnc,dfnc,Fstat)
+
+# Equivalently
+"Model No-Problem" <- ols y1 const x1 x2 x3
+restrict
+    b[1]=1
+    b[2]=1
+    b[3]=1
+end restrict
+scalar pval1_bis = $pvalue
+
+# (c) Testing the OLS hypotheses
+"Model No-Problem" <- ols y1 const x1 x2 x3
+    matrix testols=zeros(1,8)
+    modtest --normality --quiet
+    testols[1]=$pvalue
+    modtest --white
+    testols[2]=$pvalue
+    modtest --breusch-pagan
+    testols[3]=$pvalue
+    modtest --breusch-pagan --robust
+    testols[4]=$pvalue
+    setobs 1 1 --time-series
+    modtest --autocorr 1
+    testols[5]=$pvalue
+    modtest --autocorr 4
+    testols[6]=$pvalue
+    qlrtest # H0 : no structural break
+    genr index
+    genr index_break = $qlrbreak
+    genr dumrpt = ( index <= index_break)
+    chow dumrpt --dummy
+    testols[7]=$pvalue
+    modtest --squares
+    testols[8]=$pvalue
+
+# (d) Use the command to associate names and print the pvalues to file
+strings cnames =array(8)
+cnames[1]="Norm."
+cnames[2]="White"
+cnames[3]="BP"
+cnames[4]="BP Rob."
+cnames[5]="AR1"
+cnames[6]="AR4"
+cnames[7]="Struc. BK"
+cnames[8]="Squares"
+cnameset(testols,cnames)
+
+outfile stat_crit_and_tests --quiet --append
+    printf "\n The pvalue of the test of {beta0=beta1=beta2=1} is:%.8f \n",pval1
+    print ""
+    print testols
+    print ""    
+    print "********************************************************************************************************"
+end outfile
+
+
+
+
+
+#####    EXERCISE 2: Simulating models violating the OLS hypotheses            #####
+
+# 1. Generating an heteroskedasticity-problem model
+# (a) Generat y2t = b0 + b1x1t + b2x2t +u2t, s.t. 
+#     u2t = et . x1t{3/2}, et standard normal and b0=b1=b2=1
+
+set workdir "/Users/.../M203/Econometrics/LAB/LAB2023-2024/LAB3"
+clear
+open "DataLAB3_2023.gdt"
+set seed 203
+
+# Setting the parameters
+# parameters
+scalar beta0=1
+scalar beta1=1
+scalar beta2=1
+
+genr sig = abs(x1)^(3/2)
+series u2 = normal()*sig
+genr y2 = beta0 + beta1*x1 + beta2*x2 + u2
+store "DataLAB3_2023.gdt" const x1 x2 x3 y1 y2 
+
+# b)Scatter plots
+gnuplot y2 x1 --output=display
+gnuplot y2 x2 --output=display
+gnuplot y2 --time-series --with-lines --output=display
+
+
+
+# 2. Generating an autocorrelation-problem model
+# # (a) Generat y3t = b0 + b1x1t + b2x2t +u3t, t= 1 ..., T1 >>> T s.t. 
+#     u3t = 0.05 + rho u3t-1 . et, et standard normal and u31 = 1 and rho = 0,9
+clear 
+dataset clear
+# Empty data set of 700 obs.
+nulldata 700 
+set seed 203
+set workdir "/Users/.../M203/Econometrics/LAB/LAB2023-2024/LAB3"
+
+### generate the ar1 error term
+scalar rho = 0.9
+matrix u3 = zeros(700,1)
+u3[1]=1
+series e=randgen(z,0,1) # genr e=normal(0,1)
+loop i=2..700
+    u3[i]=0.05+rho*u3[i-1]+e[i]
+endloop
+series resid3=u3
+
+### b) Keep the last 500 obs. and store in resid2.gdp
+smpl 201 700
+store "resid3.gdt"
+
+### c) Clear and open data_lab3 (same explanatory var)
+clear 
+dataset clear
+open "DataLAB3_2023.gdt"
+
+### d) Add u3 from resid3
+append "resid3.gdt"
+
+### e) Generate y3
+# parameters
+scalar beta0=1
+scalar beta1=1
+scalar beta2=1
+genr y3 = beta0 + beta1*x1 + beta2*x2 + resid3
+
+### f) Scatter plots
+gnuplot y3 x1 --output=display
+gnuplot y3 x2 --output=display
+gnuplot y3 --time-series --with-lines --output=display
+
+### g) Add y3
+store "DataLAB3_2023.gdt" const x1 x2 x3 y1 y2 y3
+
+
+
+
+
+#####    EXERCISE 3: Estimating and testing when models "have problems"         #####
+
+# 1. Clear and open DataLAB3_2023.gdt
+clear
+set workdir "/Users/.../M203/Econometrics/LAB/LAB2023-2024/LAB3"
+
+open "DataLAB3_2023.gdt"
+
+
+# 2. OLS regressions and save R2, AIC and BIC 
+## y2, heteroscedasticity problems
+"mod y2" <- ols y2 const x1 x2 x3
+
+genr R2_HETE=$rsq
+genr AIC_HETE=$aic
+genr BIC_HETE=$bic
+
+outfile stat_crit_and_tests --quiet --append
+    print ""
+    print ""
+    print "********************************************************************************************************"
+    print "******                             THE HETEROSCEDASTICITY-PROBLEM MODEL                           ******"
+
+    printf "\n R2 = %.4f, AIC = %.2f, BIC = = %5.2f \n",R2_HETE, AIC_HETE, BIC_HETE
+    print ""
+    print ""    
+end outfile
+
+
+# 3. Test the parameters and save the pvalues
+# (a)Testing H0:{beta0 =beta1=beta2=1}
+"mod y2" <- ols y2 const x1 x2 x3
+restrict
+    b[1]=1
+    b[2]=1
+    b[3]=1
+end restrict
+scalar pval1 = $pvalue
+
+# (c) Testing the OLS hypotheses
+"mod y2" <- ols y2 const x1 x2 x3
+    matrix testols=zeros(1,8)
+    modtest --normality --quiet
+    testols[1]=$pvalue
+    modtest --white
+    testols[2]=$pvalue
+    modtest --breusch-pagan
+    testols[3]=$pvalue
+    modtest --breusch-pagan --robust
+    testols[4]=$pvalue
+    setobs 1 1 --time-series
+    modtest --autocorr 1
+    testols[5]=$pvalue
+    modtest --autocorr 4
+    testols[6]=$pvalue
+    qlrtest # H0 : no structural break
+    genr index
+    genr index_break = $qlrbreak
+    genr dumrpt = ( index <= index_break)
+    chow dumrpt --dummy
+    testols[7]=$pvalue
+    modtest --squares
+    testols[8]=$pvalue
+
+strings cnames =array(8)
+cnames[1]="Norm."
+cnames[2]="White"
+cnames[3]="BP"
+cnames[4]="BP Rob."
+cnames[5]="AR1"
+cnames[6]="AR4"
+cnames[7]="Struc. BK"
+cnames[8]="Squares"
+cnameset(testols,cnames)
+
+outfile stat_crit_and_test --quiet --append
+    printf "\n The pvalue of the test of {beta0=beta1=beta2=1} is:%.8f \n",pval1
+    print ""
+    print testols
+    print ""    
+    print "********************************************************************************************************"
+end outfile
+
+
+# 4. Do the same for y3, Autocorrelation problems
+"mod y3" <- ols y3 const x1 x2 x3
+
+genr R2_AUTOCORR=$rsq
+genr AIC_AUTOCORR=$aic
+genr BIC_AUTOCORR=$bic
+
+outfile stat_crit_and_test --quiet --append
+    print ""
+    print ""
+    print "********************************************************************************************************"
+    print "******                             THE AUTOCORRELEATION-PROBLEM MODEL                             ******"
+    printf "\n R2 = %.4f, AIC = %.2f, BIC = = %5.2f \n", R2_AUTOCORR, AIC_AUTOCORR, BIC_AUTOCORR
+    print ""
+    print ""    
+end outfile
+
+"mod y3" <- ols y3 const x1 x2 x3
+restrict
+    b[1]=1
+    b[2]=1
+    b[3]=1
+end restrict
+scalar pval1 = $pvalue
+
+# (c) Testing the OLS hypotheses
+"mod y3" <- ols y3 const x1 x2 x3
+    matrix testols=zeros(1,8)
+    modtest --normality --quiet
+    testols[1]=$pvalue
+    modtest --white
+    testols[2]=$pvalue
+    modtest --breusch-pagan
+    testols[3]=$pvalue
+    modtest --breusch-pagan --robust
+    testols[4]=$pvalue
+    setobs 1 1 --time-series
+    modtest --autocorr 1
+    testols[5]=$pvalue
+    modtest --autocorr 4
+    testols[6]=$pvalue
+    qlrtest # H0 : no structural break
+    genr index
+    genr index_break = $qlrbreak
+    genr dumrpt = ( index <= index_break)
+    chow dumrpt --dummy
+    testols[7]=$pvalue
+    modtest --squares
+    testols[8]=$pvalue
+
+strings cnames =array(8)
+cnames[1]="Norm."
+cnames[2]="White"
+cnames[3]="BP"
+cnames[4]="BP Rob."
+cnames[5]="AR1"
+cnames[6]="AR4"
+cnames[7]="Struc. BK"
+cnames[8]="Squares"
+cnameset(testols,cnames)
+
+outfile stat_crit_and_test --quiet --append
+    printf "\n The pvalue of the test of {beta0=beta1=beta2=1} is:%.8f \n",pval1
+    print ""
+    print testols
+    print ""    
+    print "********************************************************************************************************"
+end outfile
+
+
+# 5. Conclude
+
+

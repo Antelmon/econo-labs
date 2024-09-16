@@ -1,0 +1,202 @@
+#################################################################################
+#################################################################################
+#####                                                                       #####
+#####              LAB SESSION 2: CAPM AND BROOK'S APT MODELS               #####
+#####                                        M1-M2 203/M2 104               #####
+#####                                                                       #####
+#####              Gaëlle Le Fol - SOLUTION         2023-2024               #####
+#####                                                                       #####
+#################################################################################
+#################################################################################
+
+
+
+
+
+#####                       EXERCISE 1: The CAPM                            #####
+
+
+# 1. Load the data from the excel file DataLab2.xlsx 
+     
+set workdir "/Users/juliettemary/gretl"
+open DataLab2_1.csv
+append DataLab2_2.csv
+setobs 12 1987:01 --time-series 
+store DataLAB2.gdt
+
+
+# 2. compute risk free rate
+genr mustb3m = T3M/12
+
+# 3. Build the variables x and y 
+genr rAAPL = 100*log(AAPL/AAPL(-1))
+genr rSANDP500 = 100*log(SANDP500/SANDP500(-1))
+
+genr erAAPL = rAAPL - mustb3m
+genr erSANDP500 = rSANDP500 - mustb3m
+
+store DataCAPM.gdt
+
+# 4. Graphes 
+gnuplot erAAPL erSANDP500 --output=display
+scatters erAAPL erSANDP500 --output=display
+gnuplot erAAPL erSANDP500 --time-series --with-lines --output=display
+
+# 5. Estimation of the CAPM
+"MODEL CAPM" <- ols erAAPL const erSANDP500 
+
+# (a) What should we get for beta_0 and beta_1
+
+# (b) Quality of the regression
+
+# (c) Hypotheses for the multiple regression model
+
+# d) Conclusion
+
+
+#####                       EXERCISE 2: The APT                             #####
+
+
+# 1. (a) to (c) Build the other variables of the model
+clear
+dataset clear
+open "DataCAPM.gdt"
+smpl full
+genr INF = log(CPI/CPI(-1))
+genr DP = PPI - PPI(-1)
+genr DC = CCREDIT - CCREDIT(-1)
+genr DI = INF - INF(-1)
+genr DM = MSUPPLY - MSUPPLY(-1)
+genr DS = SCREDIT - SCREDIT(-1)
+genr TS = T10Y - T3M
+genr DT = TS - TS(-1)
+store "DataAPT.gdt"
+
+# (d) What should we get for the parameters if the model is correct
+
+# (e) Estimate the simple regression model
+"MODEL APT" <- ols erAAPL const erSANDP500 DP DC DI DM DS DT
+
+# (f) Is that the good way to estimate the APT?
+
+# (g) What do you think of this new model ?
+
+# 2. Diagnostic tests
+# (a) Heteroskedasticity
+# Visual inspection
+genr uhat = $uhat
+genr usq = uhat^2
+genr yhat = $yhat
+gnuplot usq yhat --output=display
+gnuplot usq yhat --output=Lab2Ex2Qahet.pdf
+
+## Test 
+modtest --breusch-pagan 
+modtest --white
+modtest --breusch-pagan --robust
+
+# (b) Serial correlation
+# Visual inspection 
+genr  u_lag = uhat(-1)
+gnuplot u_lag uhat --output=display
+gnuplot u_lag uhat --output=Lab2Ex2QaAuto.pdf
+
+# Test 
+genr DW=$dw
+genr DW_pval= $dwpval
+modtest 12 --autocorr 
+
+# (c) Test for residual normality
+modtest --normality
+genr u=$uhat
+normtest u --all
+qqplot u --output=display
+
+# (d) Linear relation
+modtest --squares
+
+# structural break test
+qlrtest 
+chow 1998:02
+
+# stability of the parameters
+cusum
+
+# e) Outliers : Boxplot and qqplot
+boxplot u --output=display
+qqplot u --output=display
+
+
+# f) Summary table
+set workdir "/Users/.../Econometrics/LAB/LAB2023-2024/LAB2"
+
+open DataAPT.gdt
+
+# Test in the CAPM model
+"MODEL CAPM" <- ols erAAPL const erSANDP500
+
+# Graphical "tests" of autocorreleation @ heteroskedasticity
+# (Visual inspection: heteroskedasticity
+genr uhat = $uhat
+genr usq = uhat^2
+genr yhat = $yhat
+# Scatter plot of usq against yhat
+gnuplot usq yhat --output=display
+
+# Visual inspection : serial correlation
+genr  u_lag = uhat(-1)
+# Scatter plot u_lag against u
+gnuplot u_lag uhat --output=display
+
+# (b) Test for heteroskedasticity
+modtest --breusch-pagan 
+modtest --white
+modtest --breusch-pagan --robust
+
+# Test for serial correlation
+genr DW=$dw
+genr DW_pval= $dwpval
+modtest 12 --autocorr 
+
+# Test for residual normality
+modtest --normality
+genr u=$uhat
+normtest u --all
+
+# (e) Linear relation
+modtest --squares
+
+# structural break test
+qlrtest 
+chow 1998:01
+
+# e) Outliers : Boxplot and qqplot
+boxplot u --output=display
+qqplot u --output=display
+
+
+# 3. Statistical inference and predictions
+# (a) 
+"MODEL APT" <- ols erAAPL const erSANDP500 DP DC DI DM DS DT
+
+# (b) i) Global Fisher
+
+#     ii) Joint significativity test
+omit DM DS DT
+omit --auto=0.05
+
+#     iii) Confidence interval around the coefficient of DC
+genr Ibas=$coeff(DC) - critical(t,$df,0.05)*$stderr(DC)
+genr Ihaut=$coeff(DC) + critical(t,$df,0.05)*$stderr(DC)
+
+#     iv) Predictions
+fcast 2020:01 2021:12 erAAPL_pred
+smpl 2020:01 2021:12
+gnuplot erAPPL_pred erAAPL --time-series --with-lines --output=display
+
+# 4. Discuss the approach
+
+# 5. Selected model
+
+# 6. Interpretation and conclusion
+

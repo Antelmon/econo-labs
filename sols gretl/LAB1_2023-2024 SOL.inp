@@ -1,0 +1,235 @@
+####################################################################################
+####################################################################################
+#####                                                                          #####
+#####          LAB SESSION 1: Market neutral portfolio construction            #####
+#####                                              M1-M2 203/M2 104            #####
+#####                                                                          #####
+#####          Gaëlle Le Fol -  SOLUTION                  2023-2024            #####
+#####                                                                          #####
+####################################################################################
+####################################################################################
+
+
+
+
+
+#####                    EXERCISE 1: Looking at the data                      #####
+
+# 1. 
+
+# 2. What are the characteristics of these stocks ?
+
+# Loading the data
+clear
+set workdir "/Users/juliettemary/gretl"
+
+
+open "DATALAB1.csv"
+setobs 12 1999:05 --time-series 
+store "DATALAB1_2023.gdt"
+summary
+scatters APPL AMZN MSFT GS PFZR SPX --with-lines --output=display
+gnuplot  APPL AMZN MSFT GS PFZR SPX --time-series --with-lines --output=display
+
+
+# 3. Computing the log returns 
+series R1 = 100*log(APPL/APPL(-1))
+series R2 = 100*log(AMZN/AMZN(-1))
+series R3 = 100*log(MSFT/MSFT(-1))
+series R4 =100*log(GS/GS(-1))
+series R5 = 100*log(PFZR/PFZR(-1))
+series RMkt = 100*log(SPX/SPX(-1))
+
+series rf = UST3M/12
+scatters R1 R2 R3 R4 R5 RMkt --with-lines --output=display
+
+
+# 4. Expected returns = historical annual returns and volatility
+genr HR1 = mean(R1)*12
+genr HR2 = mean(R2)*12
+genr HR3 = mean(R3)*12
+genr HR4 = mean(R4)*12
+genr HR5 = mean(R5)*12
+genr HRMkt = mean(RMkt)*12
+genr Hrf = mean(rf)*12
+
+
+# Volatility
+genr ETR1 = sd(R1)*sqrt(12)
+genr ETR2 = sd(R2)*sqrt(12)
+genr ETR3 = sd(R3)*sqrt(12)
+genr ETR4 = sd(R4)*sqrt(12)
+genr ETR5 = sd(R5)*sqrt(12)
+genr ETRMkt = sd(RMkt)*sqrt(12)
+genr ETrf = sd(rf)*sqrt(12)
+
+corr R1 R2 R3 R5 RMkt
+genr corr12=corr(R1,R2)
+
+
+# 5. Give the précision of the estimator of the returns. Volatility estimator. 
+# Hypotheses.
+
+# 6. Ranking the stocks
+
+
+
+
+
+
+#####         Exercise 2: Construction of a market neutral portfolio          #####
+
+# 1. Compute the estimated coefficients
+
+# a) Excess returns, alpha and beta
+
+series ER1 = R1-rf
+series ER2 = R2-rf
+series ER3 = R3-rf
+series ER4 = R4-rf
+series ER5 = R5-rf
+series ERMkt = RMkt-rf
+
+matrix coeff = zeros(5,3)
+"Model 1" <- ols ER1 const ERMkt
+coeff[1,1] = $coeff(const)
+coeff[1,2] = $coeff(ERMkt)
+coeff[1,3] = $sigma
+
+
+"Model 2" <- ols ER2 const ERMkt
+coeff[2,1] = $coeff(const)
+coeff[2,2] = $coeff(ERMkt)
+coeff[2,3] = $sigma
+
+
+"Model 3" <- ols ER3 const ERMkt
+coeff[3,1] = $coeff(const)
+coeff[3,2] = $coeff(ERMkt)
+coeff[3,3] = $sigma
+
+
+"Model 4" <- ols ER4 const ERMkt
+coeff[4,1] = $coeff(const)
+coeff[4,2] = $coeff(ERMkt)
+coeff[4,3] = $sigma
+
+
+"Model 5" <- ols ER5 const ERMkt
+coeff[5,1] = $coeff(const)
+coeff[5,2] = $coeff(ERMkt)
+coeff[5,3] = $sigma
+
+
+strings rname =array(5)
+strings cname = array(3)
+rname[1]="APPL"
+rname[2]="AMZN"
+rname[3]="MSFT"
+rname[4]="GS"
+rname[5]="PFZR"
+rnameset(coeff,rname)
+cname[1]="alpha"
+cname[2]="beta"
+cname[3]="sigma"
+cnameset(coeff,cname)
+print coeff
+
+
+# 1. b) Expected returns
+
+scalar ExpR1 = Hrf +coeff[1,1]+ coeff[1,2]*(HRMkt - Hrf)
+scalar ExpR2 = Hrf +coeff[2,1]+ coeff[2,2]*(HRMkt - Hrf)
+scalar ExpR3 = Hrf +coeff[3,1]+ coeff[3,2]*(HRMkt - Hrf)
+scalar ExpR4 = Hrf +coeff[4,1]+ coeff[4,2]*(HRMkt - Hrf)
+scalar ExpR5 = Hrf +coeff[5,1]+ coeff[5,2]*(HRMkt - Hrf)
+print "Expected return"
+print ExpR1 ExpR2 ExpR3 ExpR4 ExpR5
+
+
+
+# 2. Market neutral portfolio Buy and selling  W1 and W5
+
+#    (a) Are the portfolio and the market really independant
+#    there are as soon as wAPPL betaAPPL + wPFZR betaPFZR = 0
+#    APPL -> 1 and PFZR -> 5
+scalar alpha1 =coeff[1,1]
+scalar beta1 = coeff[1,2]
+scalar alpha5 = coeff[5,1]
+scalar beta5 = coeff[5,2]
+scalar w1 = -beta5/(beta1-beta5) 
+scalar w5 = beta1/(beta1-beta5) 
+
+# We want
+#    w1 + w5 = 1
+#    w1 beta1 + w5 beta5 = 0
+scalar tot1 = w1 + w5
+scalar tot2 = w1*beta1 + w5*beta5
+
+
+#    (b) Mean and variance of the return of the Long/short portfolio
+series RPORT = w5*R5 + w1*R1 
+genr MeanPORT = mean(RPORT)*12
+genr VarPORT = var(RPORT)*12
+
+series ERPORT1 = RPORT - rf
+ols ERPORT1 const ERMkt
+
+
+genr RPORT = RPORT/100
+#    (c) Liquidation value ...
+genr T=nobs(R1)
+genr LV=100
+loop i=2..T
+    # genr LV=LV*(1+(w1*R1[i]+w5*R5[i])/100)
+    genr LV=LV*(1+RPORT[i]) #equivalently 
+endloop
+print LV
+
+# 	... and compare it to the market evolution
+genr T=nobs(R1)
+matrix tmp=ones(T,1)
+genr LV=100
+tmp[1]=LV
+loop i=2..T
+    genr LV=LV*(1+(w1*R1[i]+w5*R5[i])/100) 
+    tmp[i]=LV
+endloop
+
+
+gnuplot --matrix=tmp --time-series --output=display --with-lines
+
+
+genr T=nobs(R1)
+matrix tmp2=ones(T,1)
+genr LV=100
+tmp2[1]=LV
+i=2
+loop i=2..T
+    genr LV=LV*(1+RMkt[i]/100)
+    tmp2[i]=LV
+endloop
+
+gnuplot --matrix=tmp2 --time-series --output=display --with-lines
+store "dataNeutralProtef.gdt"
+
+corr ERPORT1 ERMkt
+
+
+nulldata T --preserve
+series PORTEF=tmp
+series SandP=tmp2
+setobs 12 1999:05 --time-series 
+store "EVOL.gdt"
+gnuplot PORTEF SandP --time-series --with-lines --output=display
+corr PORTEF SandP
+
+
+#    (d) Leverage and bias
+genr lev=abs(w1)+abs(w5) 
+genr bias=(w1+w5) 
+
+
+#    (e) Better way ?
+
+
